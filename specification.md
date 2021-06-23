@@ -7,3 +7,9 @@ Note about the draft: Anything with the word *(draft)* after it is especially su
 
 Table of contents (click to view):
 - [Logic](./logic.md)
+- [Expanders](./expanders.md)
+- [Compiler Extensions](./extensions.md)
+- [Standard Extensions](./standard_ext.md)
+- *(draft: AST)*
+- *(draft: Logic Files)*
+- *(draft: Modules)*
