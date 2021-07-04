@@ -20,8 +20,8 @@ Logic instructions may take arguments. These are the possible argument types, wh
 This is a list of all logic instructions. Replace each instance of:
 - `T`, `U` and `V` in an instruction with a different argument type (`imm`, `reg`, `mem`)
 - `B` and `C` with a supported bitwidth.
-- `L` with lvalue argument types (`reg`, `mem`)
-Example: `setzx_TB_UC x: TB, y: UC` would turn into `setzx_reg8_reg8 x: reg8, y: reg8`, `setzx_reg16_reg8 x: reg16, y: reg8` etc.
+- `L` and `M` with lvalue argument types (`reg`, `mem`)
+Example: `movzx_LB_UC dst: LB, src: MC` would turn into `movzx_reg8_reg8 dst: reg8, src: reg8`, `movzx_reg16_reg8 dst: reg16, src: reg8` etc.
 
 *(draft: arithmetic ops set flags?)*
 Note:  All arguments are evaluated before the instruction execution (i.e. `push r7` = )
@@ -38,7 +38,7 @@ Note:  All arguments are evaluated before the instruction execution (i.e. `push 
 | `idivB_L_U x: LB, y: UB` | Divides two **signed** integer values and stores the result in the first value. *(draft: specify exact wrapping behavior, how does rounding work?)* | `x = floor(x / y)` |
 | *(draft: add modulo, possibly signed and unsigned versions)* | | |
 
-### Bitwise Operations
+### Bitwise Instructions
 
 | Mnemonic | Description + Notes | Pseudocode |
 | -- | -- | -- |
@@ -46,18 +46,20 @@ Note:  All arguments are evaluated before the instruction execution (i.e. `push 
 | `bitorB_L_U x: LB, y: UB` | Bitwise OR x and y, storing the result in x | `x = x | y` |
 | `bitnotB_L x: LB` | Bitwise NOT x, storing the result in x | `x = ~x` |
 
-### Memory Operations
+### Memory Instructions
 
 | Mnemonic | Description + Notes | Pseudocode |
 | -- | -- | -- |
 | `movB_L_U dst: LB, src: UB` | Copies the B-bit value `src` into `dst`. *(draft: overlapping? must be aligned?)*| `dst = src` |
+| `movzx_LB_UC x: LB, y: MC` | Copies `src` to `dst`, zero extending. | `dst = zx(sec);` |
+| `movsx_LB_UC x: LB, y: MC` | Copies `src` to `dst`, sign extending. | `dst = sx(sec);` |
 | `pushB_T x: TB` | Pushes the specified value onto the stack. | `r7 -= B / 8; *r7 = x` |
 | `popB_L x: LB` | Pops a value from the stack and stores it in the specified value. | `x = *r7; r7 += B / 8` |
-| `leaB_L x: LB, y` | `y` is a memory dereference, however the memory is not actually dereferenced. The resulting address is stored into `x` after being truncated to fit the bitwidth. *(draft: zero extension or sign extension?)* | - |
-| `memcpy_T_U dst: T64, src: U64, n: V64` | Copies `n` bytes of memory from the address `src` to the address `dst`. If the areas overlap, it will act as if `n` bytes from `src` were copied into a temporary region, and then from there to the destination. | `memmove(dst, src, n)` |
-| `memcpynv_T_U dst: T64, src: U64, n: V64` | Copies `n` bytes of memory from the address `src` to the address `dst`. The `nv` stands for non-overlapping. If the areas overlap, it will act like copying from the start to the end. *(draft: clarify with example)* | `memcpy(dst, src, n)` |
+| `leaB_L x: LB, y: mem*` | `y` is a memory dereference, however the memory is not actually dereferenced. The resulting address is stored into `x` after being truncated to fit the bitwidth. *(draft: zero extension or sign extension?)* | - |
+| `memcpy_T_U_V dst: T64, src: U64, n: V64` | Copies `n` bytes of memory from the address `src` to the address `dst`. If the areas overlap, it will act as if `n` bytes from `src` were copied into a temporary region, and then from there to the destination. | `memmove(dst, src, n)` |
+| `memcpynv_T_U_V dst: T64, src: U64, n: V64` | Copies `n` bytes of memory from the address `src` to the address `dst`. The `nv` stands for non-overlapping. If the areas overlap, it will act like copying from the start to the end. *(draft: clarify with example)* | `memcpy(dst, src, n)` |
 
-### Floating Point Operations
+### Floating Point Instructions
 
 Replace F with 32 or 64. Floats are represented as and follow the rules of IEEE 754 floating point values.
 
@@ -72,7 +74,32 @@ Replace F with 32 or 64. Floats are represented as and follow the rules of IEEE 
 | `sqrtfF x: LF` | Gets the square root of the specified value. | `x = sqrt(x)`  |
 | *(draft: add modulo)* | | |
 
-### Misc Operations
+### Control Flow Instructions
+
+| Mnemonic | Description + Notes | Pseudocode |
+| -- | -- | -- |
+| `label` | Creates a label, see below. | - |
+| `jumpB_T_U x: imm32, a: TB, b: UB` | Constant conditional jump, see below. | - |
+| `switchB_L_T_U x: L32, a: TB, b: UB, cases: imm32...` | Computed conditional jump, see below. | - |
+| `callB x: imm32` | Calls the specified label. Performs an implementation specific action so that the next time `return` is called, it will return execution to the instruction after this one. | *(implementation specific)* |
+| `return` | Returns to the previous call. | *(implementation specific)* |
+
+Jumps are ignored if `a` is not equal to `b`.
+
+Labels are stored in a list at interpretation/compile time. When interpreting:
+- The interpreted block is scanned for the `label` instruction, and each time it is encountered, the current instruction pointer is pushed to the label list.
+- For jumps:
+  - Let `label(n)` be the result of indexing from the table. `n = 0` = last element of the list as of that instruction. Negative = previous labels, positive = next labels.
+  - For constant jumps, jump to `label(x)`.
+  - For computed jumps, jump to `label(cases[x])`. If `x` is out of bounds, an error occurs.
+- The list is preserved across [executor](./expanders.md) calls.
+When compiling: (N.B. this list is an example, you may implement it differently as long as it follows the same behavior)
+- The logic is scanned for the `label` instruction, and each time it is encountered, the current target instruction pointer is pushed to the label stack.
+- The logic is scanned again for jumps:
+  - For constant jumps, the list is indexed as described above. The compiled result contains a constant jump to the target instruction pointer offset fetched.
+  - For computed jumps, a jump table is created in the target containing an offset for each case in `cases`. This jump table is indexed by the argument `x`. The compiler can assume `x` will never be out of bounds, as this is UB.
+
+### Misc Instructions
 
 | Mnemonic | Description + Notes | Pseudocode |
 | -- | -- | -- |
