@@ -14,7 +14,7 @@ Logic instructions may take arguments. These are the possible argument types, wh
 ## Logic Machine
 *(draft: logic vm, registers of the same number are views like ax and al, etc, should writes to low bit regs overwrite the high bits)*
 
-`r8` is the instruction pointer. `r7` is the stack pointer. *(draft: alias `rip`/`rsp` to `r8`/`r7`?)*
+`r8` is the stack pointer. *(draft: alias `rsp` to `r8`?)*
 
 ## Logic Instructions
 This is a list of all logic instructions. Replace each instance of:
