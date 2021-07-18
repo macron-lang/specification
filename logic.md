@@ -14,7 +14,7 @@ Logic instructions may take arguments. These are the possible argument types, wh
 ## Logic Machine
 The Logic Machine is an abstract machine/VM which runs logic. A logic machine takes logic and runs it. Execution starts at the beginning of the logic. Memory is not contiguous, there may be regions of memory which cause segfaults or other unusual behavior if accessed, depending on the running environment. Specifically, the null pointer usually causes a segfault when dereferenced on most major operating systems, though this is not a property of the logic machine (i.e. if running in an appropriate environment such as a bootloader, the null pointer may be perfectly valid).
 
-To access global data, the `setglobal` and `getglobal` instruction exists to return a global value. The default value is 0. `r8` by default is set to point to the top a stack with a capacity of pushing N bytes, where N defaults to at least 4096 but can be specified with the `-S` or `--stacksize` flag. If more than N bytes are pushed to the stack at once, a stack overflow occurs. If interpreting, this causes program termination along with an error. If compiled, the OS will handle it and you shouldn't do anything.
+All register values are 0 by default, except for `r8`. `r8` by default is set to point to the top a stack with a capacity of pushing N bytes, where N defaults to at least 4096 but can be specified with the `-S` or `--stacksize` flag. If more than N bytes are pushed to the stack at once, a stack overflow occurs. If interpreting, this causes program termination along with an error. If compiled, the OS will handle it and you shouldn't do anything.
 
 The stack goes downwards. `r8` points to the currently pushed value. Pushing does `r8 -= sizeof(x); *r8 = x`.
 
@@ -60,8 +60,6 @@ Note:  All arguments are evaluated before the instruction execution (i.e. `push 
 | `pushB_T x: TB` | Pushes the specified value onto the stack. | `r8 -= B / 8; *r8 = x` |
 | `popB_L x: LB` | Pops a value from the stack and stores it in the specified value. | `x = *r8; r8 += B / 8` |
 | `leaB_L x: LB, y: mem*` | `y` is a memory dereference, however the memory is not actually dereferenced. The resulting address is stored into `x` after being truncated to fit the bitwidth. *(draft: zero extension or sign extension?)* | - |
-| *(draft)* `getglobal_L dst: L64` | Gets the global value and stores its value in `dst` | `dst = globalValue` |
-| *(draft)* `setglobal_T src: T64` | Sets the global value to `src` | `globalValue = src` |
 | `memcpy_T_U_V dst: T64, src: U64, n: V64` | Copies `n` bytes of memory from the address `src` to the address `dst`. If the areas overlap, it will act as if `n` bytes from `src` were copied into a temporary region, and then from there to the destination. | `memmove(dst, src, n)` |
 | `memcpynv_T_U_V dst: T64, src: U64, n: V64` | Copies `n` bytes of memory from the address `src` to the address `dst`. The `nv` stands for non-overlapping. If the areas overlap, it will act like copying from the start to the end. *(draft: clarify with example)* | `memcpy(dst, src, n)` |
 
