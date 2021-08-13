@@ -111,3 +111,8 @@ When compiling: (N.B. this list is an example, you may implement it differently 
 | Mnemonic | Description + Notes | Pseudocode |
 | -- | -- | -- |
 | *(draft)* `cext ext: imm32, inst_num: imm32, args...` | Calls an extension-provided instruction. `ext` is the extension number in the program extension table, `inst_num` is the instruction number in the extension. `args` is a variadic amount of arguments of any type. Errors at runtime if the extension/instruction number is invalid, or if the arguments are the wrong type for the extension. | - |
+| `assume_e_B_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a == b`. | - |
+| `assume_il_B_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a < b` (signed 2s complement). | - |
+| `assume_igB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a > b` (signed 2s complement). | - |
+| `assume_ulB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that  `a < b` (unsigned). | - |
+| `assume_ugB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a > b` (unsigned). | - |
