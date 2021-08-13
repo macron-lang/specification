@@ -83,12 +83,15 @@ Replace F with 32 or 64. Floats are represented as and follow the rules of IEEE 
 | Mnemonic | Description + Notes | Pseudocode |
 | -- | -- | -- |
 | `label` | Creates a label, see below. | - |
-| `jumpB_T_U x: imm32, a: TB, b: UB` | Constant conditional jump, see below. | - |
+| `jneB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a != b`, see below. | - |
+| `jeB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a == b`, see below. | - |
+| `jilB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a < b` (signed 2s complement), see below. | - |
+| `jigB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a > b` (signed 2s complement), see below. | - |
+| `julB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a < b` (unsigned), see below. | - |
+| `jugB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a > b` (unsigned), see below. | - |
 | `switchB_L_T_U x: L32, a: TB, b: UB, cases: imm32...` | Computed conditional jump, see below. | - |
-| `callB x: imm32` | Calls the specified label. Performs an implementation specific action so that the next time `return` is called, it will return execution to the instruction after this one. | *(implementation specific)* |
+| `callB x: imm32` | Calls the specified label. Performs an implementation specific action so that the next time `return` is called, it will return execution to the instruction after this one.  | *(implementation specific)* |
 | `return` | Returns to the previous call. | *(implementation specific)* |
-
-Jumps are ignored if `a` is not equal to `b`.
 
 Labels are stored in a list at interpretation/compile time. When interpreting:
 - The interpreted block is scanned for the `label` instruction, and each time it is encountered, the current instruction pointer is pushed to the label list.
