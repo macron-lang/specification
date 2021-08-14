@@ -83,36 +83,44 @@ Replace F with 32 or 64. Floats are represented as and follow the rules of IEEE 
 | Mnemonic | Description + Notes | Pseudocode |
 | -- | -- | -- |
 | `label` | Creates a label, see below. | - |
+| `labeladdr_L x: L64, label: imm32` | Store the address of the specified label in `x` | `*x = label.addr` |
 | `jneB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a != b`, see below. | - |
 | `jeB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a == b`, see below. | - |
 | `jilB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a < b` (signed 2s complement), see below. | - |
 | `jigB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a > b` (signed 2s complement), see below. | - |
 | `julB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a < b` (unsigned), see below. | - |
 | `jugB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a > b` (unsigned), see below. | - |
-| `switchB_L_T_U x: L32, a: TB, b: UB, cases: imm32...` | Computed conditional jump, see below. | - |
-| `callB x: imm32` | Calls the specified label. Performs an implementation specific action so that the next time `return` is called, it will return execution to the instruction after this one.  | *(implementation specific)* |
-| `return` | Returns to the previous call. | *(implementation specific)* |
+| `switchB_L_T_U x: L32, a: TB, b: UB, cases: imm32...` | Computed conditional switch, see below. | - |
+| `jumpaddr_T x: T64`| Jump to the address specified, unconditionally. For conditional computed jumps, use the instructions above combined with this one. | - |
+| `callB x: imm32` | Calls the specified label. Equivalent to pushing the 8 byte address of the next instruction and jumping to the specified label. | `push(next_inst); ip = label(x)` |
+| `calladdr_T x: T64`| Calls the address specified, unconditionally. For conditional computed jumps, use the instructions above combined with this one. | - |
+| `return` | Returns to the previous call. Equivalent to popping 8 bytes and setting the instruction pointer to that | `ip = pop()` |
 
 Labels are stored in a list at interpretation/compile time. When interpreting:
 - The interpreted block is scanned for the `label` instruction, and each time it is encountered, the current instruction pointer is pushed to the label list.
 - For jumps:
   - Let `label(n)` be the result of indexing from the table. `n = 0` = last element of the list as of that instruction. Negative = previous labels, positive = next labels.
   - For constant jumps, jump to `label(x)`.
-  - For computed jumps, jump to `label(cases[x])`. If `x` is out of bounds, an error occurs.
+  - For computed jumps, jump to `x`.
+  - For switches, jump to `label(cases[x])`. If `x` is out of bounds, error.
 - The list is preserved across [executor](./expanders.md) calls.
 When compiling: (N.B. this list is an example, you may implement it differently as long as it follows the same behavior)
 - The logic is scanned for the `label` instruction, and each time it is encountered, the current target instruction pointer is pushed to the label stack.
 - The logic is scanned again for jumps:
   - For constant jumps, the list is indexed as described above. The compiled result contains a constant jump to the target instruction pointer offset fetched.
-  - For computed jumps, a jump table is created in the target containing an offset for each case in `cases`. This jump table is indexed by the argument `x`. The compiler can assume `x` will never be out of bounds, as this is UB.
+  - For computed jumps, add the platform's equivalent of a jump instruction to the specified address.
+  - For switches, use a jump table with the cases + a jump. If `x` is out of bounds, don't worr
 
 ### Misc Instructions
 
 | Mnemonic | Description + Notes | Pseudocode |
 | -- | -- | -- |
 | *(draft)* `cext ext: imm32, inst_num: imm32, args...` | Calls an extension-provided instruction. `ext` is the extension number in the program extension table, `inst_num` is the instruction number in the extension. `args` is a variadic amount of arguments of any type. Errors at runtime if the extension/instruction number is invalid, or if the arguments are the wrong type for the extension. | - |
-| `assume_e_B_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a == b`. | - |
-| `assume_il_B_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a < b` (signed 2s complement). | - |
-| `assume_igB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a > b` (signed 2s complement). | - |
-| `assume_ulB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that  `a < b` (unsigned). | - |
-| `assume_ugB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a > b` (unsigned). | - |
+| `assume_neB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a != b`. If that is not true, UB occurs. | - |
+| `assume_eB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a == b`. If that is not true, UB occurs. | - |
+| `assume_ilB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a < b` (signed 2s complement). If that is not true, UB occurs. | - |
+| `assume_igB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a > b` (signed 2s complement). If that is not true, UB occurs. | - |
+| `assume_ulB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a < b` (unsigned). If that is not true, UB occurs. | - |
+| `assume_ugB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a > b` (unsigned). If that is not true, UB occurs. | - |
+
+Note on the `assume*` instructions above: These are the only instructions which can cause proper, optimizable UB. In an out-of-bounds switch for example, on x86 the jump would index into some other data for the jump, probably causing a segfault, but it is not optimizable UB (unless aggressive optimizations are enabled), meaning the compiler can't assume it won't happen entirely, doing whatever it wants and summoning nasal demons.
