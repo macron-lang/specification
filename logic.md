@@ -1,126 +1,43 @@
-# Logic
-Logic is the base executable entity in Macron. Logic is made up of logic instructions. Instructions are executed in order except for branching. Logic macros may be used to generate raw logic.
+# Macron Logic
+Intrinsics for Macron: these were chosen because most needed operations can be synthesized by stringing a few of these together. Since the stdlib will be pretty much completely abstracting away the intrinsics, the compiler devs (us) who are also writing the stdlib can take elements from the stdlib which do a certain task and hardcode that into the compiler to do the correct instruction.
 
-An implementation must support bit widths 8, 16, 32, 64, and 128.
+Operand types:
+- `imm`: Immediate/constant.
+- `mem`: Equivalent to any other operand type than `mem`, but dereferenced.
+- `var`: A constant opaque reference to a variable A read/write to a variable which is bigger/smaller than the amount read/written is zero extended or the most significant bits discarded (truncation).
+- `reg`: Refers to either of the two registers: `sp` and `bp`, the stack and base pointers respectively.
 
-Logic instructions may take arguments. These are the possible argument types, where B is a supported bit width:
-- `immB`: An immediate (constant) value consisting of B bits. Written signed or unsigned depending on the instruction.
-- `regB`: A register with B bits. 8 registers are available.
-- `memB`: A memory location dereference with B bits. Consists of the following (the values of each summed together gives the final memory address to dereference:
-  - 64 bit offset
-  - Optional register of any size *(draft: does it get truncated? before or after the summation?)*
-  - Optional register of any size multiplied by a constant 1, 2, 4, or 8 *(draft: same as above)*
+L = `var`/`mem`/`reg`, T/U = `var`/`mem`/`reg`/`imm`
 
-## Logic Machine
-The Logic Machine is an abstract machine/VM which runs logic. A logic machine takes logic and runs it. Execution starts at the beginning of the logic. Memory is not contiguous, there may be regions of memory which cause segfaults or other unusual behavior if accessed, depending on the running environment. Specifically, the null pointer usually causes a segfault when dereferenced on most major operating systems, though this is not a property of the logic machine (i.e. if running in an appropriate environment such as a bootloader, the null pointer may be perfectly valid).
+Note: where it would be known at comptime, such as `jmpgt .., 5, 6`, that combination isn't allowed (jmpgt on imm and imm specifically here)
 
-All register values are 0 by default, except for `r8`. `r8` by default is set to point to the top a stack with a capacity of pushing N bytes, where N defaults to at least 4096 but can be specified with the `-S` or `--stacksize` flag. If more than N bytes are pushed to the stack at once, a stack overflow occurs. If interpreting, this causes program termination along with an error. If compiled, the OS will handle it and you shouldn't do anything.
+```
+# This intrinsic is equivalent to the following pseudocode:
+#   (id, amt, var_ids) = internal_allocvars(var_sizes...)
+#   sp -= amt
+# i.e., it subtracts enough space to store the variables from sp, and generates a unique id. You should use this id and the generated var_ids (you'll have access to them at gentime) to access the variables and to call freevars. If you're currently inside an allocvars frame, you should pass its id as `prev_alloc` (otherwise pass zero) so that registers aren't reused or the like.
+allocvars prev_alloc, var_sizes: imm64...
 
-The stack goes downwards. `r8` points to the currently pushed value. Pushing does `r8 -= sizeof(x); *r8 = x`.
+# Performs:
+#   amt = internal_allocvars_get_amt(allocvars_id)
+#   sp += amt
+# Use this to end a frame.
+freevars allocvars_id
 
-`r8` is the stack pointer.
+alloca  result: L64, amt: T64
 
-## Logic Instructions
-This is a list of all logic instructions. Replace each instance of:
-- `T`, `U` and `V` in an instruction with a different argument type (`imm`, `reg`, `mem`)
-- `B` and `C` with a supported bitwidth.
-- `L` and `M` with lvalue argument types (`reg`, `mem`)
-Example: `movzx_LB_UC dst: LB, src: MC` would turn into `movzx_reg8_reg8 dst: reg8, src: reg8`, `movzx_reg16_reg8 dst: reg16, src: reg8` etc.
+add     result: L64, x: L64, y: T64
+nand    result: L64, x: L64, y: T64
+shiftl  result: L64, x: T64, amt: U8 # shift left
+shiftrz result: L64, x: T64, amt: U8 # shift right zero extend
+shiftrs result: L64, x: T64, amt: U8 # shift right sign extend
 
-*(draft: arithmetic ops set flags?)*
-Note:  All arguments are evaluated before the instruction execution (i.e. `push r8` = `x = r8; r8 -= 8; *r8 = x`)
+jmp   addr: T64
+jmpl  label_id
+jmpeq label_id, x: L64, y: U64
 
-### Arithmetic Instructions
+# (draft: should do less than and below instead?)
 
-| Mnemonic | Description + Notes | Pseudocode |
-| -- | -- | -- |
-| `addB_L_U x: LB, y: UB` | Adds two integer values and stores the result in the first value. Wraps. | `x = x + y` |
-| `subB_L_U x: LB, y: UB` | Subtracts the second integer value from the first integer value, storing the result in the first value. Wraps. Behaves equivalent to `addB_L_U x, z` where `z` is the negation of `y` | `x = x - y` |
-| `umulB_L_U x: LB, y: UB` | Multiplies two **unsigned** integer values and stores the result in the first value *(draft: specify exact wrapping behavior)* | `x = x * y` |
-| `imulB_L_U x: LB, y: UB` | Multiplies two **signed** integer values and stores the result in the first value *(draft: specify exact wrapping behavior)* | `x = x * y` |
-| `udivB_L_U x: LB, y: UB` | Divides two **unsigned** integer values and stores the result in the first value. Truncates towards zero *(draft: specify exact wrapping behavior)* | `x = floor(x / y)` |
-| `idivB_L_U x: LB, y: UB` | Divides two **signed** integer values and stores the result in the first value. *(draft: specify exact wrapping behavior, how does rounding work?)* | `x = floor(x / y)` |
-| *(draft: add modulo, possibly signed and unsigned versions)* | | |
-
-### Bitwise Instructions
-
-| Mnemonic | Description + Notes | Pseudocode |
-| -- | -- | -- |
-| `bitandB_L_U x: LB, y: UB` | Bitwise AND x and y, storing the result in x | `x = x & y` |
-| `bitorB_L_U x: LB, y: UB` | Bitwise OR x and y, storing the result in x | `x = x | y` |
-| `bitnotB_L x: LB` | Bitwise NOT x, storing the result in x | `x = ~x` |
-
-### Memory Instructions
-
-| Mnemonic | Description + Notes | Pseudocode |
-| -- | -- | -- |
-| `movB_L_U dst: LB, src: UB` | Copies the B-bit value `src` into `dst`. *(draft: overlapping? must be aligned?)*| `dst = src` |
-| `movzx_LB_UC x: LB, y: MC` | Copies `src` to `dst`, zero extending. | `dst = zx(src)` |
-| `movsx_LB_UC x: LB, y: MC` | Copies `src` to `dst`, sign extending. | `dst = sx(src)` |
-| `pushB_T x: TB` | Pushes the specified value onto the stack. | `r8 -= B / 8; *r8 = x` |
-| `popB_L x: LB` | Pops a value from the stack and stores it in the specified value. | `x = *r8; r8 += B / 8` |
-| `leaB_L x: LB, y: mem*` | `y` is a memory dereference, however the memory is not actually dereferenced. The resulting address is stored into `x` after being truncated to fit the bitwidth. *(draft: zero extension or sign extension?)* | - |
-| `memcpy_T_U_V dst: T64, src: U64, n: V64` | Copies `n` bytes of memory from the address `src` to the address `dst`. If the areas overlap, it will act as if `n` bytes from `src` were copied into a temporary region, and then from there to the destination. | `memmove(dst, src, n)` |
-| `memcpynv_T_U_V dst: T64, src: U64, n: V64` | Copies `n` bytes of memory from the address `src` to the address `dst`. The `nv` stands for non-overlapping. If the areas overlap, it will act like copying from the start to the end. *(draft: clarify with example)* | `memcpy(dst, src, n)` |
-
-### Floating Point Instructions
-
-Replace F with 32 or 64. Floats are represented as and follow the rules of IEEE 754 floating point values.
-
-*(draft: many missing operations here)*
-
-| Mnemonic | Description + Notes | Pseudocode |
-| -- | -- | -- |
-| `addfF x: LF, y: UF` | Adds two float values and stores the result in the first. | `x = x + y` |
-| `subfF x: LF, y: UF` | Subtracts the second float value from the first and stores the result in the first. | `x = x - y` |
-| `mulfF x: LF, y: UF` | Multiplies two float values and stores the result in the first. | `x = x * y` |
-| `divfF x: LF, y: UF` | Divides the first float value by the second and stores the result in the first. | `x = x / y` |
-| `sqrtfF x: LF` | Gets the square root of the specified value. | `x = sqrt(x)`  |
-| *(draft: add modulo)* | | |
-
-### Control Flow Instructions
-
-| Mnemonic | Description + Notes | Pseudocode |
-| -- | -- | -- |
-| `label` | Creates a label, see below. | - |
-| `labeladdr_L x: L64, label: imm32` | Store the address of the specified label in `x` | `*x = label.addr` |
-| `jneB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a != b`, see below. | - |
-| `jeB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a == b`, see below. | - |
-| `jilB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a < b` (signed 2s complement), see below. | - |
-| `jigB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a > b` (signed 2s complement), see below. | - |
-| `julB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a < b` (unsigned), see below. | - |
-| `jugB_T_U x: imm32, a: TB, b: UB` | Constant jump if `a > b` (unsigned), see below. | - |
-| `switchB_L_T_U x: L32, a: TB, b: UB, cases: imm32...` | Computed conditional switch, see below. | - |
-| `jumpaddr_T x: T64`| Jump to the address specified, unconditionally. For conditional computed jumps, use the instructions above combined with this one. | - |
-| `callB x: imm32` | Calls the specified label. Equivalent to pushing the 8 byte address of the next instruction and jumping to the specified label. | `push(next_inst); ip = label(x)` |
-| `calladdr_T x: T64`| Calls the address specified, unconditionally. For conditional computed jumps, use the instructions above combined with this one. | - |
-| `return` | Returns to the previous call. Equivalent to popping 8 bytes and setting the instruction pointer to that | `ip = pop()` |
-
-Labels are stored in a list at interpretation/compile time. When interpreting:
-- The interpreted block is scanned for the `label` instruction, and each time it is encountered, the current instruction pointer is pushed to the label list.
-- For jumps:
-  - Let `label(n)` be the result of indexing from the table. `n = 0` = last element of the list as of that instruction. Negative = previous labels, positive = next labels.
-  - For constant jumps, jump to `label(x)`.
-  - For computed jumps, jump to `x`.
-  - For switches, jump to `label(cases[x])`. If `x` is out of bounds, error.
-- The list is preserved across [executor](./expanders.md) calls.
-When compiling: (N.B. this list is an example, you may implement it differently as long as it follows the same behavior)
-- The logic is scanned for the `label` instruction, and each time it is encountered, the current target instruction pointer is pushed to the label stack.
-- The logic is scanned again for jumps:
-  - For constant jumps, the list is indexed as described above. The compiled result contains a constant jump to the target instruction pointer offset fetched.
-  - For computed jumps, add the platform's equivalent of a jump instruction to the specified address.
-  - For switches, use a jump table with the cases + a jump. If `x` is out of bounds, don't worr
-
-### Misc Instructions
-
-| Mnemonic | Description + Notes | Pseudocode |
-| -- | -- | -- |
-| *(draft)* `cext ext: imm32, inst_num: imm32, args...` | Calls an extension-provided instruction. `ext` is the extension number in the program extension table, `inst_num` is the instruction number in the extension. `args` is a variadic amount of arguments of any type. Errors at runtime if the extension/instruction number is invalid, or if the arguments are the wrong type for the extension. | - |
-| `assume_neB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a != b`. If that is not true, UB occurs. | - |
-| `assume_eB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a == b`. If that is not true, UB occurs. | - |
-| `assume_ilB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a < b` (signed 2s complement). If that is not true, UB occurs. | - |
-| `assume_igB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a > b` (signed 2s complement). If that is not true, UB occurs. | - |
-| `assume_ulB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a < b` (unsigned). If that is not true, UB occurs. | - |
-| `assume_ugB_T_U x: imm32, a: TB, b: UB` | Tells the implementation that `a > b` (unsigned). If that is not true, UB occurs. | - |
-
-Note on the `assume*` instructions above: These are the only instructions which can cause proper, optimizable UB. In an out-of-bounds switch for example, on x86 the jump would index into some other data for the jump, probably causing a segfault, but it is not optimizable UB (unless aggressive optimizations are enabled), meaning the compiler can't assume it won't happen entirely, doing whatever it wants and summoning nasal demons.
+jmpgt label_id: imm64, x: T64, y: U64 # unsigned greater than
+jmpab label_id: imm64, x: T64, y: U64 # signed greater than (draft: can be done relatively easily with jmpgt?)
+```
