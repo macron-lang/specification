@@ -1,7 +1,7 @@
 # Expanders
 On the start of compilation, there are two internal functions. The first is called the expander, the second is the evaluator. The default expander perfoms the following (pseudocode):
 ```
-logicMacrosList = ["add8_reg_mem", ...]
+logicMacrosList = ["add", ...]
 
 function defaultExpander(code) {
   _defaultExpander(code, false)
